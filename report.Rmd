@@ -1,0 +1,244 @@
+---
+title: "Humar Activity recognition "
+author: "Rajib Biswas"
+date: "August 23, 2015"
+output: html_document
+---
+
+
+##Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise.
+This is the "classe" variable in the training set. We will use 54 variables to predict with, and detail how to build the best model, cross validation, sample error and why the model is best choice. We will also use the prediction model to predict 20 different test cases.
+
+
+####**Dataset**
+
+- training data : [training](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+- test data : [testing](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+
+###**Libraries**
+```{r, message=FALSE}
+seedVar<-7689
+set.seed(seedVar)
+library(caret)
+library(parallel)
+library(doParallel)
+#parallel processing with multicore
+registerDoParallel(makeCluster(detectCores()))
+
+```
+
+##**Step1.Load and prepare dataset **
+
+Dataset is downloaded in current directory.
+
+```{r}
+
+#load raw data
+training <- read.csv("pml-training.csv", header = TRUE)
+test  <- read.csv('pml-testing.csv', header = TRUE)
+
+#traing dataset summary
+dim(training)
+dim(test)
+
+table(training$classe)
+
+```
+
+**Clean up missing data **
+remove column having 90% or more missing data
+non zero variance column also removed
+```{r}
+
+naCol<- apply(training,2,function(x) {sum(is.na(x))});
+training <- training[,which(naCol <  nrow(training)*0.8)];  
+dim(training)
+
+#remove near zero variance predictors
+nz <- nearZeroVar(training, saveMetrics = TRUE)
+training <- training[, nz$nzv==FALSE]
+dim(training)
+
+```
+
+**Removing irrelevant variables**
+
+variables such as X,user_name, timestamps, new_window are not important in predicting the "Classe"" variable of the dataset. Therefore, we have removed the irrelevant variables.
+
+```{R}
+#remove not relevant columns for classification 
+
+removeIndex<- grep("timestamp|X|user_name|new_window",names(training))
+training <- training[,-removeIndex]
+dim(training)
+#class into factor
+training$classe <- factor(training$classe)
+```
+
+
+
+
+##**step2.Split the data**
+Split the data: 80% for training, 20% for testing.
+```{r}
+set.seed(seedVar)
+trainIndex <- createDataPartition(y = training$classe, p=0.8,list=FALSE)
+trainingSample <- training[trainIndex,]
+testingSample <- training[-trainIndex,]
+
+
+dim(trainingSample)
+dim(testingSample)
+
+```
+
+
+##**step3.Create machine learning models**
+
+Decision Tree, Random forest(rf), and boosted trees(gbm) algorithm are used to comapre
+
+####**Model Selection**
+```{r}
+  
+set.seed(seedVar)
+ 
+model_dt <- train(classe ~ .,  method="rpart", data=trainingSample)
+save(model_dt,file="model_dt.rda")
+model_rf <- train(classe ~ .,  method="rf", data=trainingSample)
+save(model_rf,file="model_rf.rda")
+model_gbm <-train(classe ~ ., method = "gbm", data = trainingSample)
+save(model_gbm,file="model_gbm.rda")
+
+
+```
+
+
+
+####**Confusion Matrix**
+```{r}
+# Scoring - Confusion matrix
+print("decision tree........  ")
+dt_predict<- predict(model_dt, testingSample)
+print(confusionMatrix(dt_predict, testingSample$classe))
+
+print("Random forest ...... ")
+rf_predict<- predict(model_rf, testingSample)
+print(confusionMatrix(rf_predict, testingSample$classe))
+
+print("Boosted trees GBM ......")
+gbm_predict<- predict(model_gbm , testingSample)
+print(confusionMatrix(gbm_predict, testingSample$classe))
+```
+Random Forest algorithm is selected as, its having high accuracy of 99.4%
+```{r}
+print(model_rf)
+
+```
+
+####**Cross validation and tuning of Random forest**
+10 fold and 10 repeated cross validation
+
+```{r}
+set.seed(seedVar)
+registerDoParallel(makeCluster(detectCores()))
+
+cv_control <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+model_rf_CV <- train(classe ~ ., method="rf",  data=trainingSample, trControl = cv_control)
+save(model_rf_CV,file="model_rf_CV.rda")
+
+
+```
+
+Our final model (model rf CV) will have accuracy nearly > 99%.
+
+
+
+##**step4.Prediction with testing data**
+
+As we have splitted the data into two sets, we have trained our model with training data. Now, We have our ready model and we will use the rest of 20% of data to test the model
+
+**Predict on sample test set**
+```{r}
+#Use best fit to predict testing data 
+set.seed(seedVar)
+print("Random forest accuracy after Cross validation")
+rf_CV_accuracy<<- predict(model_rf_CV , testingSample)
+print(confusionMatrix(rf_CV_accuracy, testingSample$classe))
+
+```
+
+**Accuracy of prediction**
+
+```{r}
+set.seed(seedVar)
+postResample(rf_CV_accuracy, testingSample$classe)
+
+```
+
+**Expected out of sample error**
+
+Accuracy of predictions is about 99.9% therefore the expected out of sample error is around less than  1% (1 - 0.99)
+
+**Predict 20 test cases for submission**
+
+
+```{r}
+set.seed(seedVar)
+#predict
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+
+#Prediction
+saveOut<- function(){
+  prediction <- predict(model_rf_CV, test)
+  print(prediction)
+  answers <- as.vector(prediction)
+  pml_write_files(answers)
+}
+#dump output
+saveOut()
+
+
+```
+
+
+##**Conclusion**
+
+- Accuracy of Decision Tree: 56.5%
+- Accuracy of RF: 99.6%
+- Accuracy of RF:  98.8%
+
+Random Forest algorithm  performed better than Decision Trees or boosted tree.
+
+Note:- Prediction on 20 sample test set is found to 100% correct. :)
+
+##Appendix
+
+###Appendix 1
+
+**Variable importance**
+
+```{r}
+#Important Variables 
+print("Variables importance")
+vi = varImp(model_rf_CV$finalModel)
+vi$var<-rownames(vi)
+vi = as.data.frame(vi[with(vi, order(vi$Overall, decreasing=TRUE)), ])
+rownames(vi) <- NULL
+print(vi)
+```
+
+
+
