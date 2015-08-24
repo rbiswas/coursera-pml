@@ -1,5 +1,8 @@
 # coursera-pml
 Practical machine learning
 
-HTML preview can be seen from here. use it for Evaluation.
+click here for Evaluation.
+
 https://rawgit.com/rbiswas/coursera-pml/master/report.html
+
+HTML preview can be seen from here.
