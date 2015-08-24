@@ -111,7 +111,7 @@ dim(training)</code></pre>
 <pre><code>## 
 ##    A    B    C    D    E 
 ## 5580 3797 3422 3216 3607</code></pre>
-<p><strong>Clean up missing data </strong> remove column having 90% or more missing data non zero variance column also removed</p>
+<p><strong>Clean up missing data: </strong> remove column having 80% or more missing data. Non zero variance column also removed</p>
 <pre class="r"><code>naCol&lt;- apply(training,2,function(x) {sum(is.na(x))});
 training &lt;- training[,which(naCol &lt;  nrow(training)*0.8)];  
 dim(training)</code></pre>
